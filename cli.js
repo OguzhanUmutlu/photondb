@@ -10,7 +10,17 @@ const file = process.argv[2];
         console.log(db);
         process.exit();
     }
-    console.log("PhotonDB v" + db.version.toString().padStart(3, "0").split("").join("."));
+    const semantic = num => num.toString().padStart(3, "0").split("").join(".");
+    console.log("PhotonDB v" + semantic(db.version) + (db.version !== db.versionCurrent ? ", current: " + semantic(db.versionCurrent) : ""));
+    if (db.version < db.versionCurrent) {
+        console.log("WARNING: Editing an old versioned photon file!");
+        process.stdout.write("Do you want to update this photon file? (y/n): ");
+        const p = await new Promise(r => stdin.question("", r));
+        if (p === "y") {
+            db.update();
+            console.log("Successfully updated.");
+        }
+    }
     while (true) {
         process.stdout.write("> ");
         const input = await new Promise(r => stdin.question("", r));

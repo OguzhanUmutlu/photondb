@@ -14,12 +14,14 @@ type QueryResult = string | QueryGetResult | true | false;
 type Table = [string, Row[], Column[]];
 
 type PhotonDB = {
+    update: () => boolean,
     save: () => void,
     saveAsync: () => Promise<void>,
     query: (input: string) => QueryResult,
     queryAsync: (input: string) => Promise<QueryResult>,
     queryInternal: (input: string, success: Function) => QueryResult,
     readonly version: number,
+    readonly versionCurrent: number,
     readonly all: Table[]
 };
 

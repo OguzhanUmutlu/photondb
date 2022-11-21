@@ -1,4 +1,5 @@
 # Photon DB
+
 As fast as a photon, as small-sized as a photon.
 
 ## For further questions
@@ -12,6 +13,15 @@ My Discord: Oğuzhan#6561
 - ✨ Compared to other databases it is so small and compact! ✨
 - ✨ It's so fast! ✨
 - ✨ Supports multiple languages and executables for multiple operating systems! ✨
+
+### Blazingly fast!
+
+- Note: I know this is not related to sqlite, but I wanted to compare it to other famous databases.
+
+|                                                                | select 1 row | select 100000 rows | insert 100000 row |
+|----------------------------------------------------------------|--------------|--------------------|-------------------|
+| photondb                                                       | 1x           | 1x                 | 1x                |
+| [better-sqlite3](https://www.npmjs.com/package/better-sqlite3) | 2.63x slower | 11.5x slower       | 17.7x slower      |
 
 ## Usage
 
@@ -50,8 +60,10 @@ db.query("CREATE TABLE helloWorld hi TEXT");
 #### Properties
 
 - `text` - It means the row's type is a string/text. Text type will be selected if nothing is given.
-- `number` - It means the row's type is a number. Can be negative or positive. Can be a floating number. If auto increment property is selected the type will be chosen as number.
-- `auto-increment` - It means that whenever a new one is created its' value will be increased by one according to the last added one. If auto increment option is given there is no need for its type to be given. Alias: "autoincrement"
+- `number` - It means the row's type is a number. Can be negative or positive. Can be a floating number. If auto
+  increment property is selected the type will be chosen as number.
+- `auto-increment` - It means that whenever a new one is created its' value will be increased by one according to the
+  last added one. If auto increment option is given there is no need for its type to be given. Alias: "autoincrement"
 - `key` - It will make it a key which means you can't create two or more with the same value. Alias: "unique"
 
 ### DELETE TABLE
@@ -98,7 +110,6 @@ db.query("CREATE TABLE helloWorld hi TEXT");
 
 - `UPDATE FROM workers WHERE \<condition> SET \<values>`
 - `UPDATE FROM salaries SET salary 30000`
-
 
 # TODO
 

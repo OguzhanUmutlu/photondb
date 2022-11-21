@@ -4,7 +4,7 @@ const columnSplitter = 0;
 const generalSplitter = 1;
 const tableSplitter = 2;
 const backslash = 3;
-const VERSION = 102;
+const VERSION = 103;
 
 const chr = n => String.fromCharCode(n);
 
@@ -147,6 +147,18 @@ function removeExtraWhitespace(str) {
     return str;
 }
 
+const tables = new Map;
+
+const tick = () => {
+    tables.forEach(t => t());
+    tables.clear();
+    setTimeout(tick);
+};
+
+tick();
+
+let _tid = 0;
+
 const photon = (file, thr = true) => {
     const err = str => {
         if (thr) throw new Error(str);
@@ -156,21 +168,29 @@ const photon = (file, thr = true) => {
     const chr = n => String.fromCharCode(n);
     let content = fs.readFileSync(file, "utf8");
     if (!content) content = chr(VERSION);
-    const FILE_VERSION = content[0].charCodeAt(0);
+    let FILE_VERSION = content[0].charCodeAt(0);
     if (FILE_VERSION > VERSION) return err("Selected BDB file's version is v" + FILE_VERSION + " which is higher than the parser's version(v" + VERSION + ")");
     const current = decoder(content);
+    let tid = _tid++;
     const res = {
+        update: () => {
+            if (FILE_VERSION >= VERSION) return false;
+            FILE_VERSION = VERSION;
+            content = chr(VERSION) + content.substring(1);
+            res.save();
+            return true;
+        },
         save: () => fs.writeFileSync(file, encoder(current)),
         saveAsync: () => new Promise(r => fs.writeFile(file, encoder(current), () => r())),
         query: input => res.queryInternal(input, () => res.save()),
         queryAsync: input => new Promise((r, rej) => {
             try {
-                const l = res.queryInternal(input, () => res.saveAsync().then(() => r(l)).catch(() => rej()));
+                const l = res.queryInternal(input, null, () => res.saveAsync().then(() => r(l)).catch(() => rej()));
             } catch (e) {
                 rej(e);
             }
         }),
-        queryInternal: (input, save) => {
+        queryInternal: (input, saveTick, saveInstant) => {
             let args = input.split(" ");
             const cmd = str => {
                 if (input.toLowerCase().startsWith(str)) {
@@ -186,7 +206,7 @@ const photon = (file, thr = true) => {
             if (cmd("create table")) {
                 // create-table myTable id key auto-increment, name, age int
                 // TODO: "default" property
-                const tableName = args[0];
+                const tableName = args.slice(0, 3).join(" ").toLowerCase() === "if not exists" ? args[3] : args[0];
                 const exists = current.some(i => i[0] === tableName);
                 if (args.slice(0, 3).join(" ").toLowerCase() === "if not exists") {
                     args = args.slice(3);
@@ -367,15 +387,22 @@ const photon = (file, thr = true) => {
                 const columns = table[2].filter(i => requirements.every(j => i[j[0]] === j[1]));
                 columns.forEach(i => setting.forEach(j => i[j[0]] = j[1]));
             } else return err("Invalid command");
-            if (save) save();
+            if (saveInstant) saveInstant();
+            if (saveTick) tables.set(tid, saveTick);
             return true;
         }
     };
     Object.defineProperty(res, "version", {
-        get: () => content.charCodeAt(0)
+        get: () => FILE_VERSION
+    });
+    Object.defineProperty(res, "versionCurrent", {
+        get: () => VERSION
     });
     Object.defineProperty(res, "all", {
         get: () => current
+    });
+    Object.defineProperty(res, "id", {
+        get: () => tid
     });
     return res;
 };
