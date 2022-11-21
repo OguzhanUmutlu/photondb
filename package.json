@@ -1,0 +1,28 @@
+{
+  "name": "photondb",
+  "version": "1.0.2",
+  "description": "As fast as a photon, as small-sized as a photon.",
+  "main": "pdb.js",
+  "scripts": {
+  },
+  "bin": {
+    "photondb": "cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OguzhanUmutlu/photondb.git"
+  },
+  "keywords": [
+    "db",
+    "photon",
+    "fast",
+    "small",
+    "easy"
+  ],
+  "author": "OguzhanUmutlu",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/OguzhanUmutlu/photondb/issues"
+  },
+  "homepage": "https://github.com/OguzhanUmutlu/photondb#readme"
+}
