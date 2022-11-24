@@ -108,7 +108,7 @@ db.query("CREATE TABLE helloWorld hi TEXT");
 
 #### Examples:
 
-- `UPDATE FROM workers WHERE \<condition> SET \<values>`
+- `UPDATE FROM workers WHERE <condition> SET <values>`
 - `UPDATE FROM salaries SET salary 30000`
 
 # TODO
