@@ -1,6 +1,6 @@
 {
   "name": "photondb",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "As fast as a photon, as small-sized as a photon.",
   "main": "pdb.js",
   "scripts": {

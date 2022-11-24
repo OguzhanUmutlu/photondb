@@ -21,7 +21,6 @@ const file = process.argv[2];
             console.log("Successfully updated.");
         }
     }
-    console.log(require("util").inspect(db.all,false,100,true));
     while (true) {
         process.stdout.write("> ");
         const input = await new Promise(r => stdin.question("", r));

@@ -65,6 +65,7 @@ db.query("CREATE TABLE helloWorld hi TEXT");
 - `auto-increment` - It means that whenever a new one is created its' value will be increased by one according to the
   last added one. If auto increment option is given there is no need for its type to be given. Alias: "autoincrement"
 - `key` - It will make it a key which means you can't create two or more with the same value. Alias: "unique"
+- `default=Something` - It will put that value to that column if it was not specified from the query. Alias: "def=Something"
 
 ### DELETE TABLE
 
