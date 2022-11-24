@@ -1,17 +1,14 @@
-type RowName = string;
-type IsKey = 0 | 1;
-type IsAutoIncrement = 0 | 1;
-type RowType = 0 | 1; // number, string
+// column description: NAME HAS_DEFAULT IS_UNIQUE WILL_INCREMENT TYPE DEFAULT_VALUE INCREMENT_VALUE
 
-type Row = [RowName, IsKey, IsAutoIncrement, RowType];
-type Column = (string | number)[]; // values of the rows, example: name = "Jack", age = 10 will be looking like ["Jack", 10]
+type Column = [string, 0 | 1, 0 | 1, 0 | 1, 0 | 1, string | number | null, number | null];
+type Row = (string | number)[]; // values of the columns, example: name = "Jack", age = 10 will be looking like ["Jack", 10]
 
-type QueryGetResult = Column[];
+type QueryGetResult = Row[];
 type QueryResult = string | QueryGetResult | true | false;
 // string -> error as string
 // true -> can save
 // false -> no need for anything to be done(example: if you create a table with 'if not exists' tag and if it exists it will return false)
-type Table = [string, Row[], Column[]];
+type Table = [string, Column[], Row[]];
 
 type PhotonDB = {
     update: () => boolean,

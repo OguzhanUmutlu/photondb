@@ -1,40 +1,48 @@
 const fs = require("fs");
 
-const columnSplitter = 0;
+const rowSplitter = 0;
 const generalSplitter = 1;
 const tableSplitter = 2;
 const backslash = 3;
-const VERSION = 103;
+const columnSplitter = 4;
+const VERSION = 104;
 
 const chr = n => String.fromCharCode(n);
 
-// TODO: every error message should have dot at end
+// column description: NAME HAS_DEFAULT IS_UNIQUE WILL_INCREMENT TYPE DEFAULT_VALUE INCREMENT_VALUE
 
-// [ U_VERSION TABLE_NAME U_2 (ROW_NAME U_2 U_ROW_PRIMARY_ROW_TYPE).join(U_2) U_1 (VALUE).join(U_1) ].join(U_3)
+// [ U_VERSION TABLE_NAME U_1 (COLUMN_NAME U_1 U_COLUMN_DEFAULT_PRIMARY_INCREMENT_TYPE U_4 DEFAULT U_4 INCREMENT).join(U_2) U_1 (VALUE).join(U_1) ].join(U_3)
 // TYPES: number, string
 
 const stringEncoder = str => str.toString()
     .replaceAll(chr(backslash), chr(backslash).repeat(2))
-    .replaceAll(chr(columnSplitter), chr(backslash) + chr(columnSplitter))
+    .replaceAll(chr(rowSplitter), chr(backslash) + chr(rowSplitter))
     .replaceAll(chr(generalSplitter), chr(backslash) + chr(generalSplitter))
     .replaceAll(chr(tableSplitter), chr(backslash) + chr(tableSplitter));
-const encoder = tables => chr(VERSION) + tables.map(table => `${stringEncoder(table[0])}${chr(generalSplitter)}${table[1].map(row => `${row[0]}${chr(generalSplitter)}${chr(row[1] * 100 + row[2] * 10 + row[3])}`).join("")}${chr(columnSplitter)}${table[2].map(col => col.map(stringEncoder).join(chr(columnSplitter))).join(chr(columnSplitter))}`).join(chr(tableSplitter));
+
+const encoder = tables => chr(VERSION) + tables.map(table => `${stringEncoder(table[0])}${chr(generalSplitter)}${table[1].map((column, k, l) => `${column[0]}${chr(generalSplitter)}${chr(column[1] * 8 + column[2] * 4 + column[3] * 2 + column[4])}${[...(column[1] ? [`${column[5]}`] : []), ...(column[3] ? [`${column[6]}`] : [])].map((i, m, n) => i + (m === n.length - 1 && k === l.length - 1 ? `` : `${chr(generalSplitter)}`)).join("")}`).join("")}${chr(columnSplitter)}${table[2].map(r => r.map(stringEncoder).join(chr(rowSplitter))).join(chr(rowSplitter))}`).join(chr(tableSplitter));
 
 const decoder = content => {
     content += chr(tableSplitter);
     const tables = [];
     let cancel = false;
-// reset all these at the end of every table
     let name = "";
     let nameDone = false;
-    let rows = [];
-    let rowName = "";
-    let rowDone = false;
     let columns = [];
     let columnName = "";
-    let columnGroup = [];
+    let columnDefault = "";
+    let columnIncrement = "";
+    let columnStart = true;
+    let columnDefaultDone = true;
+    let columnIncrementDone = true;
+    let columnNext = null;
     let columnDone = false;
-    let columnIndex = 0;
+    let rows = [];
+    let rowName = "";
+    let rowGroup = [];
+    let rowDone = false;
+    let rowIndex = 0;
+    let rowChar = 0;
 
     for (let i = 1; i < content.length; i++) {
         const c = content[i];
@@ -53,48 +61,91 @@ const decoder = content => {
                 continue;
             }
             name += c;
-        } else if (!rowDone) {
-            if (!cancel && code === generalSplitter) {
-                if (!content[i + 1]) throw new Error("Invalid BDB format. Expected a character after the row ending. Error code: #1");
-                const next = content[i + 1].charCodeAt(0).toString().padStart(3, "0").split("");
-                if (content[i + 2] && content[i + 2].charCodeAt(0) === columnSplitter) {
-                    rowDone = true;
+        } else if (!columnDone) {
+            // column name 1 101 column name 1 1111 DEF 1 INC 1 column name 1 1111 DEF 1 INC     4 COLUMN 0 COLUMN 2
+            if (!cancel && (code === generalSplitter || code === columnSplitter)) {
+                let st = false;
+                if (columnStart && code !== columnSplitter) {
+                    columnStart = false;
+                    st = true;
+                    if (!content[i + 1]) throw new Error("Invalid BDB format. Expected a character after the column ending.");
+                    columnNext = content[i + 1].charCodeAt(0).toString(2).padStart(4, "0").split("").map(i => i * 1);
+                    if (columnNext[0]) columnDefaultDone = false;
+                    if (columnNext[2]) columnIncrementDone = false;
                     i++;
                 }
-                rows.push([rowName, next[0] * 1, next[1] * 1, next[2] * 1]);
+                if (!st) {
+                    if (!columnDefaultDone) {
+                        columnDefaultDone = true;
+                    } else if (!columnIncrementDone) {
+                        columnIncrementDone = true;
+                    }
+                }
+                if (columnDefaultDone && columnIncrementDone && code !== columnSplitter) {
+                    columnIncrement *= 1;
+                    const col = [columnName, columnNext[0], columnNext[1], columnNext[2], columnNext[3]];
+                    if (columnNext[0]) {
+                        if (columnNext[3] === 0) {
+                            if (isNaN(columnDefault * 1)) throw new Error("Expected a valid number for default value of column '" + columnName + "'.");
+                            columnDefault *= 1;
+                        }
+                        col.push(columnDefault);
+                    } else col.push(null);
+                    if (columnNext[2]) {
+                        if (isNaN(columnIncrement * 1)) throw new Error("Expected a valid number for auto-increment value of column '" + columnName + "'.");
+                        columnIncrement *= 1;
+                        col.push(columnIncrement);
+                    } else col.push(null);
+                    columns.push(col);
+                    columnStart = true;
+                    columnName = "";
+                    columnDefault = "";
+                    columnIncrement = "";
+                    columnDefaultDone = true;
+                    columnIncrementDone = true;
+                    columnNext = null;
+                }
+                if (code === columnSplitter) columnDone = true;
+                continue;
+            }
+
+            if (!columnDefaultDone) columnDefault += c;
+            else if (!columnIncrementDone) columnIncrement += c;
+            else columnName += c;
+        } else if (!rowDone) {
+            rowChar++;
+            if (!cancel && (code === rowSplitter || code === tableSplitter)) {
+                const columnType = columns[rowIndex][4];
+                rowIndex++;
+                if (columnType === 0) rowName *= 1;
+                if (rowChar !== 1) rowGroup.push(rowName);
+                if (rowGroup.length >= columns.length) {
+                    rows.push(rowGroup);
+                    rowGroup = [];
+                    rowIndex = 0;
+                }
+                if (code === tableSplitter) {
+                    tables.push([name, columns, rows]);
+                    name = "";
+                    nameDone = false;
+                    columns = [];
+                    columnName = "";
+                    columnDefault = "";
+                    columnIncrement = "";
+                    columnDefaultDone = true;
+                    columnIncrementDone = true;
+                    columnNext = null;
+                    columnDone = false;
+                    rows = [];
+                    rowGroup = [];
+                    rowDone = false;
+                    rowIndex = 0;
+                    rowChar = 0;
+                }
                 rowName = "";
-                i++;
                 continue;
             }
             rowName += c;
-        } else if (!columnDone) {
-            if (!cancel && (code === columnSplitter || code === tableSplitter)) {
-                const rowType = rows[columnIndex][3];
-                columnIndex++;
-                if (rowType === 0) columnName *= 1;
-                columnGroup.push(columnName);
-                if (columnGroup.length >= rows.length) {
-                    columns.push(columnGroup);
-                    columnGroup = [];
-                    columnIndex = 0;
-                }
-                if (code === tableSplitter) {
-                    tables.push([name, rows, columns]);
-                    name = "";
-                    nameDone = false;
-                    rows = [];
-                    rowName = "";
-                    rowDone = false;
-                    columns = [];
-                    columnGroup = [];
-                    columnDone = false;
-                    columnIndex = 0;
-                }
-                columnName = "";
-                continue;
-            }
-            columnName += c;
-            //process.stdout.write((code < 20 ? "U_" + code : c) + " ");
         }
         if (code !== backslash) cancel = false;
     }
@@ -107,7 +158,6 @@ function detectStrings(str, thr = true) {
     let str_start = null;
     let str_index = 0;
     let cancel = false;
-    let str2 = str;
     for (let i = 0; i < str.length; i++) {
         const c = str[i];
         if (c === "\\" && str_on !== null) {
@@ -122,7 +172,6 @@ function detectStrings(str, thr = true) {
             if (!cancel && c === "\"") {
                 strings.push(str_on);
                 str = str.substring(0, str_start) + "$" + (str_index++) + str.substring(i + 1);
-                str2 = str2.substring(0, str_start) + str2.substring(i + 1);
                 str_on = null;
                 continue;
             }
@@ -139,7 +188,7 @@ function detectStrings(str, thr = true) {
         if (thr) throw new Error(err);
         else return err;
     }
-    return [str, str2, strings];
+    return [str, strings];
 }
 
 function removeExtraWhitespace(str) {
@@ -149,13 +198,18 @@ function removeExtraWhitespace(str) {
 
 const tables = new Map;
 
-const tick = () => {
+const tick = t => {
     tables.forEach(t => t());
     tables.clear();
-    setTimeout(tick);
+    if (!t) setTimeout(tick);
 };
 
 tick();
+
+["SIGINT", "SIGTERM"].forEach(ev => process.on(ev, (a, b) => {
+    tick(true);
+    process.exit();
+}));
 
 let _tid = 0;
 
@@ -169,7 +223,7 @@ const photon = (file, thr = true) => {
     let content = fs.readFileSync(file, "utf8");
     if (!content) content = chr(VERSION);
     let FILE_VERSION = content[0].charCodeAt(0);
-    if (FILE_VERSION > VERSION) return err("Selected BDB file's version is v" + FILE_VERSION + " which is higher than the parser's version(v" + VERSION + ")");
+    if (FILE_VERSION > VERSION) return err("Selected BDB file's version is v" + FILE_VERSION.toString().padStart(3, "0").split("").join(".") + " which is higher than the parser's version(v" + VERSION.toString().padStart(3, "0").split("").join(".") + ").");
     const current = decoder(content);
     let tid = _tid++;
     const res = {
@@ -199,128 +253,153 @@ const photon = (file, thr = true) => {
                 }
                 return false;
             };
-            // TODO: update row, add row, remove row
-
-            // TODO: make key/unique property actually work
+            // TODO: update column, add column, remove column
 
             if (cmd("create table")) {
-                // create-table myTable id key auto-increment, name, age int
-                // TODO: "default" property
                 const tableName = args.slice(0, 3).join(" ").toLowerCase() === "if not exists" ? args[3] : args[0];
                 const exists = current.some(i => i[0] === tableName);
                 if (args.slice(0, 3).join(" ").toLowerCase() === "if not exists") {
                     args = args.slice(3);
                     if (exists) return false;
                 }
-                if (exists) return err("Table called '" + tableName + "' already exists");
-                const rows = [];
-                const r = removeExtraWhitespace(args.slice(1).join(" ")).split(",").map(i => i.trim().split(" "));
-                if (r.some(i => !i[0])) return err("Syntax: CREATE TABLE <table> <row-name> <row-properties>, <row-name> <row-properties>, ...");
+                if (exists) return err("Table called '" + tableName + "' already exists.");
+                const columns = [];
+                const detectedStrings = detectStrings(removeExtraWhitespace(args.slice(1).join(" ")), thr);
+                if (typeof detectedStrings === "string") return detectedStrings;
+                let [newStr, strings] = detectedStrings;
+                newStr = newStr.replaceAll("\n", "");
+                if (newStr.split("").filter(i => i === "$").length !== strings.length) return err("Unexpected dollar sign.");
+                const r = newStr.split(",").map(i => i.trim().split(" "));
+                if (r.some(i => !i[0])) return err("Syntax: CREATE TABLE <table> <column-name> <column-properties>, <column-name> <column-properties>, ...");
                 for (let i = 0; i < r.length; i++) {
-                    const row = r[i];
-                    const row2 = row.join(" ").toLowerCase();
-                    if (row2.includes("text") && row2.includes("number")) return err("A row can't have multiple types.");
-                    if ((row2.includes("auto-increment") || row2.includes("autoincrement")) && row2.includes("text")) return err("A row can't have both auto-increment and str properties.");
-                    rows.push([row[0], (row2.includes("key") || row2.includes("unique")) * 1, (row2.includes("auto-increment") || row2.includes("autoincrement")) * 1, row2.includes("number") || (row2.includes("auto-increment") || row2.includes("autoincrement")) ? 0 : 1]);
+                    const column = r[i];
+                    if (columns.some(i => i[0] === column[0])) return err("Table has more than one columns called '" + column[0] + "'.");
+                    const column2 = column.join(" ").toLowerCase();
+                    if (column2.includes("text") && column2.includes("number")) return err("A column can't have multiple types.");
+                    if ((column2.includes("auto-increment") || column2.includes("autoincrement")) && column2.includes("text")) return err("A column can't have both auto-increment and str properties.");
+                    let def = column2.split(" ").find(i => i.toLowerCase().startsWith("default=") || i.toLowerCase().startsWith("def="));
+                    const col = [column[0], !!def, (column2.includes("key") || column2.includes("unique")) * 1, (column2.includes("auto-increment") || column2.includes("autoincrement")) * 1, column2.includes("number") || (column2.includes("auto-increment") || column2.includes("autoincrement")) ? 0 : 1];
+                    if (def) {
+                        def = def.split("=")[1];
+                        if (col[4] === 0) {
+                            if (isNaN(def * 1)) return err("Column's default value should be a number type since the '" + col[0] + "' column's type is a number.");
+                            def *= 1;
+                        } else if (col[4] === 1) {
+                            if (!def.startsWith("$")) return err("Column's default should should be a text type since the '" + col[0] + "' column's type is a text.");
+                            def = strings[def.substring(1)];
+                        }
+                        col.push(def);
+                    } else col.push(null);
+                    if (col[3]) {
+                        let inc = 0;
+                        if (col[1]) inc = col[5];
+                        col.push(inc);
+                    } else col.push(null);
+                    columns.push(col);
                 }
-                current.push([tableName, rows, []]);
+                current.push([tableName, columns, []]);
             } else if (cmd("delete table")) {
                 const tableName = args[0] || "";
                 if (!current.some(i => i[0] === tableName)) {
                     if (!tableName) return err("Syntax: DELETE TABLE <table>");
-                    return err("Couldn't find the table called '" + tableName + "'");
+                    return err("Couldn't find the table called '" + tableName + "'.");
                 }
                 current.splice(current.findIndex(i => i[0] === tableName), 1);
-            } else if (cmd("insert into")) { // TODO: change all "column"s to "row" and "row"s to "column" 💀
-                // insert-column myTable name "Alex", age 10
+            } else if (cmd("insert into")) {
                 const tableName = args[0];
                 const table = current.find(i => i[0] === tableName);
-                if (!table) return err("Couldn't find a table called '" + tableName + "'");
+                if (!table) return err("Couldn't find a table called '" + tableName + "'.");
                 const givenStr = args.slice(1).join(" ");
                 const detectedStrings = detectStrings(givenStr, thr);
                 if (typeof detectedStrings === "string") return detectedStrings;
-                const [newStr, checkStr, strings] = detectedStrings;
-                if (checkStr.includes("$")) return err("Unexpected dollar sign");
-                const split = newStr.split(",").map(i => removeExtraWhitespace(i.trim()).split(" "));
+                let [newStr, strings] = detectedStrings;
+                newStr = newStr.replaceAll("\n", "");
+                if (newStr.split("").filter(i => i === "$").length !== strings.length) return err("Unexpected dollar sign.");
+                let split = newStr.split(",").map(i => removeExtraWhitespace(i.trim()).split(" "));
+                if (split.length === 1 && split[0].length === 1 && !split[0][0]) split = [];
                 const unexpected = split.filter(i => i.length !== 2);
-                if (unexpected.length) return err("Syntax: INSERT INTO <table> <row-name> <row-value>, <row-name> <row-value>, ...");
+                if (unexpected.length) return err("Syntax: INSERT INTO <table> <column-name> <column-value>, <column-name> <column-value>, ...");
                 if (split.every(i => i[0])) {
                     const invalid = split.filter(i => !table[1].some(j => j[0] === i[0]));
-                    if (invalid.length) return err("Invalid row name" + (invalid.length > 1 ? "s" : "") + " for table '" + tableName + "': " + invalid.map(i => "'" + i[0] + "'").join(", "));
+                    if (invalid.length) return err("Invalid column name" + (invalid.length > 1 ? "s" : "") + " for table '" + tableName + "': " + invalid.map(i => "'" + i[0] + "'").join(", ") + ".");
                 }
-                const def = table[1].filter(i => !i[2] && !split.some(j => j[0] === i[0]));
-                if (def.length) return err("Couldn't get a default value for the row" + (def.length > 1 ? "s" : "") + " " + def.map(i => "'" + i[0] + "'").join(", "));
-                const column = [];
+                const def = table[1].filter(i => !i[3] && !i[1] && !split.some(j => j[0] === i[0]));
+                if (def.length) return err("Couldn't get a default value for the column" + (def.length > 1 ? "s" : "") + " " + def.map(i => "'" + i[0] + "'").join(", ") + ".");
+                const row = [];
                 for (let i = 0; i < table[1].length; i++) {
-                    const row = table[1][i];
-                    let val = split.find(i => i[0] === row[0]);
+                    const column = table[1][i];
+                    let val = split.find(i => i[0] === column[0]);
                     if (val) {
                         val = val[1];
                         if (val.startsWith("$")) val = strings[val.substring(1)];
                         else val *= 1;
-                        if (typeof val !== ["number", "string"][row[3]]) return err("Row type '" + ["number", "string"][row[3]] + "' expected, got '" + typeof val + "'");
-                    } else val = ((table[2].slice(0).reverse()[0] || [])[i] || 0) + 1; // TODO: if you delete the last entry, the new entry will have its id
-                    column.push(val);
+                        if (column[2] && table[2].some(j => j[i] === val)) return err("Column named '" + column[0] + "' should be unique.");
+                        if (typeof val !== ["number", "string"][column[4]]) return err("Column type '" + ["number", "string"][column[3]] + "' expected, got '" + typeof val + "'.");
+                    } else {
+                        if (column[4] === 0) val = column[1] ? column[5] * 1 : ++column[6];
+                        else if (column[4] === 1) val = column[5];
+                    }
+                    row.push(val);
                 }
-                table[2].push(column);
+                table[2].push(row);
             } else if (cmd("delete from")) {
-                // delete-column myTable name "Alex", age 10
                 const tableName = args[0];
                 if (!tableName) return err("Syntax: DELETE FROM <table> WHERE <condition>");
                 const table = current.find(i => i[0] === tableName);
-                if (!table) return err("Couldn't find a table called '" + tableName + "'");
+                if (!table) return err("Couldn't find a table called '" + tableName + "'.");
                 if ((args[1] || "").toLowerCase() !== "where") return err("Syntax: DELETE FROM <table> WHERE <condition>");
                 const givenStr = args.slice(2).join(" ");
-                const [newStr, checkStr, strings] = detectStrings(givenStr);
-                if (checkStr.includes("$")) return err("Unexpected dollar sign");
+                let [newStr, strings] = detectStrings(givenStr);
+                if (newStr.split("").filter(i => i === "$").length !== strings.length) return err("Unexpected dollar sign.");
+                newStr = newStr.replaceAll("\n", "");
                 const split = newStr.split(",").map(i => removeExtraWhitespace(i.trim()).split(" "));
                 const unexpected = split.filter(i => i.length !== 2);
                 if (unexpected.length) return err("Syntax: DELETE FROM <table> WHERE <condition>");
                 if (split.every(i => i[0])) {
                     const invalid = split.filter(i => !table[1].some(j => j[0] === i[0]));
-                    if (invalid.length) return err("Invalid row name" + (invalid.length > 1 ? "s" : "") + " for table '" + tableName + "': " + invalid.map(i => "'" + i[0] + "'").join(", "));
+                    if (invalid.length) return err("Invalid column name" + (invalid.length > 1 ? "s" : "") + " for table '" + tableName + "': " + invalid.map(i => "'" + i[0] + "'").join(", ") + ".");
                 }
                 const requirements = [];
                 for (let i = 0; i < table[1].length; i++) {
-                    const row = table[1][i];
-                    let val = split.find(i => i[0] === row[0]);
+                    const column = table[1][i];
+                    let val = split.find(i => i[0] === column[0]);
                     if (val) {
                         val = val[1];
                         if (val.startsWith("$")) val = strings[val.substring(1)];
                         else val *= 1;
-                        if (typeof val !== ["number", "string"][row[3]]) return err("Row type '" + ["number", "string"][row[3]] + "' expected, got '" + typeof val + "'");
+                        if (typeof val !== ["number", "string"][column[4]]) return err("Column type '" + ["number", "string"][column[3]] + "' expected, got '" + typeof val + "'.");
                         requirements.push([i, val]);
                     }
                 }
-                const columns = table[2].filter(i => requirements.every(j => i[j[0]] === j[1]));
-                columns.forEach(i => table[2].splice(table[2].indexOf(i), 1));
-                return columns;
+                const rows = table[2].filter(i => requirements.every(j => i[j[0]] === j[1]));
+                rows.forEach(i => table[2].splice(table[2].indexOf(i), 1));
             } else if (cmd("select from")) {
                 const tableName = args[0];
                 if (!tableName) return err("Syntax: SELECT FROM <table> WHERE <condition>");
                 const table = current.find(i => i[0] === tableName);
-                if (!table) return err("Couldn't find a table called '" + tableName + "'");
+                if (!table) return err("Couldn't find a table called '" + tableName + "'.");
                 if ((args[1] || "").toLowerCase() !== "where" && args.length > 1) return err("Syntax: SELECT FROM <table> WHERE <condition>");
                 let requirements = [];
                 if (args.length > 1) {
                     const givenStr = args.slice(2).join(" ");
-                    const [newStr, checkStr, strings] = detectStrings(givenStr);
-                    if (checkStr.includes("$")) return err("Unexpected dollar sign");
+                    let [newStr, strings] = detectStrings(givenStr);
+                    if (newStr.split("").filter(i => i === "$").length !== strings.length) return err("Unexpected dollar sign.");
+                    newStr = newStr.replaceAll("\n", "");
                     const split = newStr.split(",").map(i => removeExtraWhitespace(i.trim()).split(" "));
                     const unexpected = split.filter(i => i.length !== 2);
                     if (unexpected.length) return err("Syntax: SELECT FROM <table> WHERE <condition>");
                     if (split.every(i => i[0])) {
                         const invalid = split.filter(i => !table[1].some(j => j[0] === i[0]));
-                        if (invalid.length) return err("Invalid row name" + (invalid.length > 1 ? "s" : "") + " for table '" + tableName + "': " + invalid.map(i => "'" + i[0] + "'").join(", "));
+                        if (invalid.length) return err("Invalid column name" + (invalid.length > 1 ? "s" : "") + " for table '" + tableName + "': " + invalid.map(i => "'" + i[0] + "'").join(", ") + ".");
                     }
                     for (let i = 0; i < table[1].length; i++) {
-                        const row = table[1][i];
-                        let val = split.find(i => i[0] === row[0]);
+                        const column = table[1][i];
+                        let val = split.find(i => i[0] === column[0]);
                         if (val) {
                             val = val[1];
                             if (val.startsWith("$")) val = strings[val.substring(1)];
                             else val *= 1;
-                            if (typeof val !== ["number", "string"][row[3]]) return err("Row type '" + ["number", "string"][row[3]] + "' expected, got '" + typeof val + "'");
+                            if (typeof val !== ["number", "string"][column[4]]) return err("Column type '" + ["number", "string"][column[3]] + "' expected, got '" + typeof val + "'.");
                             requirements.push([i, val]);
                         }
                     }
@@ -330,11 +409,12 @@ const photon = (file, thr = true) => {
                 const tableName = args[0];
                 if (!tableName) return err("Syntax: UPDATE FROM <table> WHERE <condition> SET <values>");
                 const table = current.find(i => i[0] === tableName);
-                if (!table) return err("Couldn't find a table called '" + tableName + "'");
+                if (!table) return err("Couldn't find a table called '" + tableName + "'.");
 
                 const givenStr = args.slice(1).join(" ");
-                const [newStr, checkStr, strings] = detectStrings(givenStr);
-                if (checkStr.includes("$")) return err("Unexpected dollar sign");
+                let [newStr, strings] = detectStrings(givenStr);
+                newStr = newStr.replaceAll("\n", "");
+                if (newStr.split("").filter(i => i === "$").length !== strings.length) return err("Unexpected dollar sign.");
 
                 const words = newStr.split(" ");
                 let whereSplit = [];
@@ -347,7 +427,7 @@ const photon = (file, thr = true) => {
                     const whereIndex = words.findIndex(i => i.toLowerCase() === "where");
                     setSplit = words.slice(1, whereIndex === -1 ? words.length : whereIndex);
                     if (whereIndex !== -1) whereSplit = words.slice(whereIndex + 1);
-                } else return err("Expected a 'where' or 'set' expression");
+                } else return err("Expected a 'where' or 'set' expression.");
                 whereSplit = whereSplit.join(" ").split(",").map(i => i.split(" ").filter(i => i)).filter(i => i[0]);
                 setSplit = setSplit.join(" ").split(",").map(i => i.split(" ").filter(i => i)).filter(i => i[0]);
                 /*const splitA = newStr.split(",").map(i => removeExtraWhitespace(i.trim()).split(" "));
@@ -356,37 +436,38 @@ const photon = (file, thr = true) => {
                 const split = splitA.slice(0, splitInd + 1);
                 const splitB = [split[split.length - 1].slice(3), ...splitA.slice(splitInd + 1)];
                 split[split.length - 1] = split[split.length - 1].slice(0, 2);*/
-                if (whereSplit.some(i => i.length !== 2)) return err("Every where expression should have a row name and a value");
-                if (setSplit.some(i => i.length !== 2)) return err("Every set expression should have a row name and a value");
+                if (whereSplit.some(i => i.length !== 2)) return err("Every where expression should have a column name and a value.");
+                if (setSplit.some(i => i.length !== 2)) return err("Every set expression should have a column name and a value.");
                 const invalid = [...whereSplit, ...setSplit].filter(i => !table[1].some(j => j[0] === i[0])).map(i => i[0]);
-                if (invalid.length) return err("Invalid row" + (invalid.length > 1 ? "s" : "") + " for table '" + tableName + "': " + invalid.join(", "));
+                if (invalid.length) return err("Invalid column" + (invalid.length > 1 ? "s" : "") + " for table '" + tableName + "': " + invalid.join(", ") + ".");
                 const requirements = [];
                 for (let i = 0; i < table[1].length; i++) {
-                    const row = table[1][i];
-                    let val = whereSplit.find(i => i[0] === row[0]);
+                    const column = table[1][i];
+                    let val = whereSplit.find(i => i[0] === column[0]);
                     if (val) {
                         val = val[1];
                         if (val.startsWith("$")) val = strings[val.substring(1)];
                         else val *= 1;
-                        if (typeof val !== ["number", "string"][row[3]]) return err("Row type '" + ["number", "string"][row[3]] + "' expected, got '" + typeof val + "'");
+                        if (typeof val !== ["number", "string"][column[4]]) return err("Column type '" + ["number", "string"][column[3]] + "' expected, got '" + typeof val + "'.");
                         requirements.push([i, val]);
                     }
                 }
                 const setting = [];
                 for (let i = 0; i < table[1].length; i++) {
-                    const row = table[1][i];
-                    let val = setSplit.find(i => i[0] === row[0]);
+                    const column = table[1][i];
+                    let val = setSplit.find(i => i[0] === column[0]);
                     if (val) {
                         val = val[1];
                         if (val.startsWith("$")) val = strings[val.substring(1)];
                         else val *= 1;
-                        if (typeof val !== ["number", "string"][row[3]]) return err("Row type '" + ["number", "string"][row[3]] + "' expected, got '" + typeof val + "'");
+                        if (column[2] && table[2].some(j => j[i] === val)) return err("Column named '" + column[0] + "' should be unique.");
+                        if (typeof val !== ["number", "string"][column[4]]) return err("Column type '" + ["number", "string"][column[3]] + "' expected, got '" + typeof val + "'.");
                         setting.push([i, val]);
                     }
                 }
-                const columns = table[2].filter(i => requirements.every(j => i[j[0]] === j[1]));
-                columns.forEach(i => setting.forEach(j => i[j[0]] = j[1]));
-            } else return err("Invalid command");
+                const rows = table[2].filter(i => requirements.every(j => i[j[0]] === j[1]));
+                rows.forEach(i => setting.forEach(j => i[j[0]] = j[1]));
+            } else return err("Invalid command.");
             if (saveInstant) saveInstant();
             if (saveTick) tables.set(tid, saveTick);
             return true;

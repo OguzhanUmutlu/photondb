@@ -14,13 +14,14 @@ const file = process.argv[2];
     console.log("PhotonDB v" + semantic(db.version) + (db.version !== db.versionCurrent ? ", current: " + semantic(db.versionCurrent) : ""));
     if (db.version < db.versionCurrent) {
         console.log("WARNING: Editing an old versioned photon file!");
-        process.stdout.write("Do you want to update this photon file? (y/n): ");
+        process.stdout.write("Do you want to update this photon file? We recommend backing up your file (y/n): ");
         const p = await new Promise(r => stdin.question("", r));
         if (p === "y") {
             db.update();
             console.log("Successfully updated.");
         }
     }
+    console.log(require("util").inspect(db.all,false,100,true));
     while (true) {
         process.stdout.write("> ");
         const input = await new Promise(r => stdin.question("", r));
