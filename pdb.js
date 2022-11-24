@@ -5,7 +5,7 @@ const generalSplitter = 1;
 const tableSplitter = 2;
 const backslash = 3;
 const columnSplitter = 4;
-const VERSION = 104;
+const VERSION = 106;
 
 const chr = n => String.fromCharCode(n);
 
@@ -65,7 +65,7 @@ const decoder = content => {
             // column name 1 101 column name 1 1111 DEF 1 INC 1 column name 1 1111 DEF 1 INC     4 COLUMN 0 COLUMN 2
             if (!cancel && (code === generalSplitter || code === columnSplitter)) {
                 let st = false;
-                if (columnStart && code !== columnSplitter) {
+                if (columnStart) {
                     columnStart = false;
                     st = true;
                     if (!content[i + 1]) throw new Error("Invalid BDB format. Expected a character after the column ending.");
@@ -81,7 +81,7 @@ const decoder = content => {
                         columnIncrementDone = true;
                     }
                 }
-                if (columnDefaultDone && columnIncrementDone && code !== columnSplitter) {
+                if (columnDefaultDone && columnIncrementDone) {
                     columnIncrement *= 1;
                     const col = [columnName, columnNext[0], columnNext[1], columnNext[2], columnNext[3]];
                     if (columnNext[0]) {
@@ -105,7 +105,10 @@ const decoder = content => {
                     columnIncrementDone = true;
                     columnNext = null;
                 }
-                if (code === columnSplitter) columnDone = true;
+                if (code === columnSplitter) {
+                    columnDone = true;
+                    i--; // because it skips the column splitter
+                }
                 continue;
             }
 
@@ -118,7 +121,7 @@ const decoder = content => {
                 const columnType = columns[rowIndex][4];
                 rowIndex++;
                 if (columnType === 0) rowName *= 1;
-                if (rowChar !== 1) rowGroup.push(rowName);
+                if (rowChar > 2) rowGroup.push(rowName);
                 if (rowGroup.length >= columns.length) {
                     rows.push(rowGroup);
                     rowGroup = [];
@@ -145,7 +148,7 @@ const decoder = content => {
                 rowName = "";
                 continue;
             }
-            rowName += c;
+            if (rowChar !== 1) rowName += c;
         }
         if (code !== backslash) cancel = false;
     }
