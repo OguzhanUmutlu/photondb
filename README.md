@@ -1,4 +1,4 @@
-# Photon DB
+# Photon DB [![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=PhotonDB:%20A%20fast%20and%20compact%20database&hashtags=javascript,fast,node,sql,database,table,small,photon,compact&url=https://github.com/OguzhanUmutlu/photondb)
 
 As fast as a photon, as small-sized as a photon.
 
