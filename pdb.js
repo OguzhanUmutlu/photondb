@@ -7,7 +7,7 @@ const generalSplitter = 1;
 const tableSplitter = 2;
 const backslash = 3;
 const columnSplitter = 4;
-const VERSION = 106;
+const VERSION = 107;
 
 const chr = n => String.fromCharCode(n);
 

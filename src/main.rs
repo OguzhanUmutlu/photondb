@@ -20,10 +20,6 @@ fn main() {
     loop {
         let mut input = String::new();
         stdin.read_line(&mut input).expect("Failed to read line");
-        // table
-        // insert
-        // get
-        // set
         // TODO: convert js one to rust and then make it executable
     }
 }
